@@ -610,6 +610,7 @@ const MentalWellness = ({ user, userData }) => {
     }
   };
 
+  // Professional Help Component
   const ProfessionalHelpSection = () => (
     <div style={styles.professionalHelpSection}>
       <div style={styles.professionalHelpHeader}>
