@@ -1,14 +1,13 @@
+// src/services/aiService.js
 import axios from 'axios';
 
-// Real Mental Health AI Service
 class MentalHealthAIService {
   constructor() {
-    // Using Hugging Face Inference API with MentalHealth-16K model
-    // This model is fine-tuned specifically for empathetic mental health conversations [citation:1]
+    // This will read from Vercel environment variables
     this.apiKey = process.env.REACT_APP_HUGGINGFACE_API_KEY;
-    this.model = 'khazarai/MentalChat-16K'; // Specialized mental health model [citation:1]
     this.conversationHistory = [];
     this.userContext = {};
+    console.log('AI Service initialized. API Key exists:', !!this.apiKey);
   }
 
   setUserContext(userData) {
@@ -20,39 +19,33 @@ class MentalHealthAIService {
     };
   }
 
-  // Get response from Hugging Face API
   async getResponse(message, chatHistory = []) {
-    // Crisis detection first - always prioritize safety
+    // Crisis detection first
     if (this.isCrisis(message)) {
       return this.getCrisisResponse();
     }
 
+    // If no API key, use fallback
+    if (!this.apiKey) {
+      console.warn('No Hugging Face API key found. Using fallback responses.');
+      return {
+        text: this.getFallbackResponse(message),
+        sentiment: this.analyzeSentiment(message),
+        needsHelp: false,
+        isCrisis: false
+      };
+    }
+
     try {
-      // Build conversation context for the AI
-      const systemPrompt = `You are a compassionate mental health assistant. 
-Provide empathetic, supportive responses. Never give medical advice.
-User: ${this.userContext.name}
-Context: Points: ${this.userContext.points}, Streak: ${this.userContext.streak} days`;
-
-      // Get recent conversation for context
-      const recentHistory = chatHistory.slice(-5).map(msg => 
-        `${msg.type === 'user' ? 'User' : 'Assistant'}: ${msg.text}`
-      ).join('\n');
-
-      const fullPrompt = `${systemPrompt}\n\nRecent conversation:\n${recentHistory}\n\nUser: ${message}\nAssistant:`;
-
-      // Call Hugging Face API with MentalHealth-16K model [citation:1]
+      // Try Hugging Face API
       const response = await axios.post(
-        'https://api-inference.huggingface.co/models/khazarai/MentalChat-16K',
+        'https://api-inference.huggingface.co/models/facebook/blenderbot-400M-distill',
         {
-          inputs: fullPrompt,
+          inputs: message,
           parameters: {
-            max_new_tokens: 150,
+            max_length: 100,
             temperature: 0.7,
-            top_p: 0.8,
-            top_k: 20,
-            do_sample: true,
-            return_full_text: false
+            top_p: 0.9
           }
         },
         {
@@ -64,82 +57,33 @@ Context: Points: ${this.userContext.points}, Streak: ${this.userContext.streak} 
       );
 
       let aiResponse = response.data[0]?.generated_text || '';
-      
-      // Clean up the response
-      aiResponse = aiResponse.replace('Assistant:', '').trim();
       
       if (!aiResponse || aiResponse.length < 5) {
         aiResponse = this.getFallbackResponse(message);
       }
 
-      // Analyze sentiment using a simpler method
-      const sentiment = this.analyzeSentiment(message);
-
       return {
         text: aiResponse,
-        sentiment: sentiment,
-        needsHelp: false,
-        source: 'mentalchat-16k'
-      };
-
-    } catch (error) {
-      console.error('AI Service Error:', error);
-      
-      // Fallback to GPT-2 model if primary fails [citation:4]
-      try {
-        return await this.getGPT2Fallback(message);
-      } catch {
-        return {
-          text: this.getFallbackResponse(message),
-          sentiment: 'neutral',
-          needsHelp: false,
-          source: 'fallback'
-        };
-      }
-    }
-  }
-
-  // Fallback using GPT-2 mental health model [citation:4]
-  async getGPT2Fallback(message) {
-    try {
-      const response = await axios.post(
-        'https://api-inference.huggingface.co/models/Pranilllllll/finetuned_gpt2_45krows_10epochs',
-        {
-          inputs: `User: ${message}\nTherapist:`,
-          parameters: {
-            max_new_tokens: 100,
-            temperature: 0.9,
-            top_p: 0.95,
-            do_sample: true
-          }
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      let aiResponse = response.data[0]?.generated_text || '';
-      aiResponse = aiResponse.replace('Therapist:', '').trim();
-      
-      return {
-        text: aiResponse || this.getFallbackResponse(message),
         sentiment: this.analyzeSentiment(message),
         needsHelp: false,
-        source: 'gpt2-mental'
+        isCrisis: false
       };
+
     } catch (error) {
-      console.error('GPT-2 Fallback Error:', error);
-      return null;
+      console.error('Hugging Face API Error:', error.response?.status, error.response?.data || error.message);
+      // Fallback to local responses
+      return {
+        text: this.getFallbackResponse(message),
+        sentiment: this.analyzeSentiment(message),
+        needsHelp: false,
+        isCrisis: false
+      };
     }
   }
 
-  // Simple sentiment analysis
   analyzeSentiment(text) {
-    const positive = ['good', 'great', 'happy', 'joy', 'excited', 'grateful', 'wonderful', 'amazing', 'blessed'];
-    const negative = ['sad', 'depressed', 'angry', 'anxious', 'stress', 'terrible', 'awful', 'hopeless', 'worthless'];
+    const positive = ['good', 'great', 'happy', 'joy', 'excited', 'grateful', 'wonderful', 'amazing'];
+    const negative = ['sad', 'depressed', 'angry', 'anxious', 'stress', 'terrible', 'awful', 'hopeless'];
     
     const words = text.toLowerCase().split(' ');
     let posScore = words.filter(w => positive.includes(w)).length;
@@ -150,35 +94,27 @@ Context: Points: ${this.userContext.points}, Streak: ${this.userContext.streak} 
     return 'neutral';
   }
 
-  // Crisis detection
   isCrisis(text) {
-    const crisisWords = ['suicide', 'kill myself', 'want to die', 'harm myself', 'end it all', 'no hope', 'give up'];
+    const crisisWords = ['suicide', 'kill myself', 'want to die', 'harm myself', 'end it all', 'no hope'];
     return crisisWords.some(word => text.toLowerCase().includes(word));
   }
 
-  // Crisis response - always show resources
   getCrisisResponse() {
     return {
       text: `🚨 **I'm really concerned about what you're sharing**
 
-I hear that you're in tremendous pain right now. Please reach out for immediate support:
-
-**Crisis Resources:**
+Please reach out for immediate support:
 • **988 Suicide & Crisis Lifeline**: Call or text 988
 • **Crisis Text Line**: Text HOME to 741741
 • **Emergency Services**: 911
 
-You don't have to face this alone. These services are available 24/7 with trained professionals.
-
-Would you like me to stay here with you while you reach out for help? 💙`,
+You don't have to face this alone. 💙`,
       sentiment: 'crisis',
       needsHelp: true,
-      isCrisis: true,
-      source: 'crisis'
+      isCrisis: true
     };
   }
 
-  // Fallback responses
   getFallbackResponse(message) {
     const lowerMsg = message.toLowerCase();
     
@@ -187,15 +123,15 @@ Would you like me to stay here with you while you reach out for help? 💙`,
     }
 
     if (lowerMsg.includes('how are you')) {
-      return "I'm doing well, thank you for asking! 😊 But more importantly, how are YOU feeling today? I'm here to support you.";
+      return "I'm doing well, thank you for asking! 😊 How are YOU feeling today?";
     }
 
     if (lowerMsg.includes('thank')) {
-      return "You're so welcome! 🤗 It means a lot that you're reaching out. Is there anything else on your mind?";
+      return "You're so welcome! 🤗 Is there anything else on your mind?";
     }
 
     const responses = [
-      "I appreciate you sharing that with me. 🤗 Could you tell me more about what's going on? I'm here to listen.",
+      "I appreciate you sharing that with me. 🤗 Could you tell me more about what's going on?",
       "That sounds really important. 💭 How long have you been feeling this way?",
       "Thank you for trusting me. 💙 What support would be most helpful for you right now?",
       "I hear you. Your feelings are completely valid. 🌟 Would you like to explore this together?"
@@ -204,14 +140,12 @@ Would you like me to stay here with you while you reach out for help? 💙`,
     return responses[Math.floor(Math.random() * responses.length)];
   }
 
-  // Store conversation for context
   storeConversation(userMessage, aiResponse) {
     this.conversationHistory.push({
       user: userMessage,
       bot: aiResponse,
       timestamp: new Date().toISOString()
     });
-    // Keep only last 50 messages
     if (this.conversationHistory.length > 50) {
       this.conversationHistory = this.conversationHistory.slice(-50);
     }
