@@ -4,6 +4,7 @@ import './App.css';
 import ChillZone from './components/ChillZone';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import mentalHealthAI from './services/aiService';
 
 const professionalResources = {
   crisisHotlines: [
