@@ -5,6 +5,7 @@ import ChillZone from './components/ChillZone';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import mentalHealthAI from './services/aiService';
+import ChatInterface from './components/ChatInterface';
 
 const professionalResources = {
   crisisHotlines: [
@@ -338,8 +339,8 @@ const UserProfileSetup = ({ user, onComplete }) => {
         age: parseInt(profileData.age),
         gender: profileData.gender,
         fitnessGoal: profileData.fitnessGoal,
-        points: 1250,
-        streak: 7,
+        points: 0,
+        streak: 0,
         profileCompleted: true,
         lastLogin: new Date().toISOString(),
         createdAt: new Date().toISOString(),
@@ -1814,30 +1815,32 @@ const BrainGames = ({ user, userData }) => {
   };
 
   const handleMathAnswer = (selectedAnswer) => {
-    if (!gameActive || !currentMathProblem || gameOver) return;
+  if (!gameActive || !currentMathProblem || gameOver) return;
+  
+  // Convert both to numbers for safe comparison
+  const selected = Number(selectedAnswer);
+  const correct = Number(currentMathProblem.answer);
+  
+  if (selected === correct) {
+    const pointsEarned = levels[selectedLevel].points;
+    setMathScore(mathScore + pointsEarned);
+    setScore(score + pointsEarned);
+    setQuestionsCompleted(questionsCompleted + 1);
+    showFeedback(`✅ Correct! +${pointsEarned} points`, 'success');
     
-    if (selectedAnswer === currentMathProblem.answer) {
-      const pointsEarned = levels[selectedLevel].points;
-      setMathScore(mathScore + pointsEarned);
-      setScore(score + pointsEarned);
-      setQuestionsCompleted(questionsCompleted + 1);
-      showFeedback(`✅ Correct! +${pointsEarned} points`, 'success');
-      
-      // Move to next question or end game
-      if (currentQuestionIndex < mathProblems.length - 1) {
-        setTimeout(() => {
-          setCurrentQuestionIndex(currentQuestionIndex + 1);
-          setCurrentMathProblem(mathProblems[currentQuestionIndex + 1]);
-        }, 1500);
-      } else {
-        setTimeout(() => endGame(true), 1500);
-      }
+    if (currentQuestionIndex < mathProblems.length - 1) {
+      setTimeout(() => {
+        setCurrentQuestionIndex(currentQuestionIndex + 1);
+        setCurrentMathProblem(mathProblems[currentQuestionIndex + 1]);
+      }, 1500);
     } else {
-      showFeedback(`❌ Incorrect! The answer was ${currentMathProblem.answer}`, 'error');
-      // End game immediately on wrong answer for math game
-      setTimeout(() => endGame(false), 1500);
+      setTimeout(() => endGame(true), 1500);
     }
-  };
+  } else {
+    showFeedback(`❌ Incorrect! The answer was ${currentMathProblem.answer}`, 'error');
+    setTimeout(() => endGame(false), 1500);
+  }
+};
 
   // Riddles Game Functions
   const initializeRiddlesGame = () => {
@@ -3242,7 +3245,7 @@ const AppContent = () => {
   const renderActiveTab = () => {
     switch(activeTab) {
       case 'mentalWellness':
-        return <MentalWellness user={user} userData={userData} />;
+        return <ChatInterface user={user} userData={userData} />; // ✅ Changed to ChatInterface
       case 'fitnessCoach':
         return <FitnessCoach user={user} userData={userData} />;
       case 'brainGames':
@@ -3254,7 +3257,7 @@ const AppContent = () => {
       case 'chillZone':
         return <ChillZone user={user} userData={userData} />;
       default:
-        return <MentalWellness user={user} userData={userData} />;
+        return <ChatInterface user={user} userData={userData} />;
     }
   };
 
