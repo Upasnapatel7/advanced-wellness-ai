@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { auth, db } from './services/firebase';
 import './App.css';
@@ -1005,7 +1004,7 @@ Would you like me to stay here with you while you reach out for help?`,
             <div style={styles.chatContainer}>
               <div style={styles.chatMessages}>
                 {chatHistory.length === 0 ? (
-                  <div style={styles.welcomeMessage}>
+                  <div style={styles.chatWelcomeMessage}>
                     <div style={styles.welcomeIcon}>💭</div>
                     <h3>Hello, I'm your mental health assistant</h3>
                     <p>I'm here to listen, provide emotional support, and help you navigate difficult feelings. You can share anything that's on your mind.</p>
@@ -1293,7 +1292,7 @@ const FitnessCoach = ({ user, userData }) => {
       
       <div style={styles.planOverview}>
         <div style={styles.planCard}>
-          <h3 style={styles.planTitle}>Plan Overview</h3>
+          <h3 style={styles.planTitleHero}>Plan Overview</h3>
           <div style={styles.planDetails}>
             <div style={styles.planDetail}>
               <span style={styles.detailLabel}>Goal:</span>
@@ -1359,13 +1358,13 @@ const FitnessCoach = ({ user, userData }) => {
       {/* Goal Selection Section */}
       <div style={styles.section}>
         <h2 style={styles.sectionTitle}>Select Your Goal</h2>
-        <div style={styles.goalsGrid}>
+        <div style={styles.fitnessGoalsGrid}>
           {goals.map(goal => (
             <div
               key={goal.id}
               style={{
-                ...styles.goalCard,
-                ...(selectedGoal === goal.id && styles.activeGoalCard)
+                ...styles.fitnessGoalCard,
+                ...(selectedGoal === goal.id && styles.activeFitnessGoalCard)
               }}
               onClick={() => setSelectedGoal(goal.id)}
             >
@@ -2881,7 +2880,7 @@ const Community = ({ user, userData }) => {
       {/* Create Post Section */}
       <div style={styles.createPost}>
         <div style={styles.postHeader}>
-          <div style={styles.userInfo}>
+          <div style={styles.postUserInfo}>
             <span style={styles.userAvatar}>👤</span>
             <div>
               <strong>{userData?.fullName || user?.email || "You"}</strong>
@@ -2950,7 +2949,7 @@ const Community = ({ user, userData }) => {
           posts.map(post => (
             <div key={post.id} style={styles.postCard}>
               <div style={styles.postHeader}>
-                <div style={styles.userInfo}>
+                <div style={styles.postUserInfo}>
                   <span style={styles.userAvatar}>{post.userAvatar}</span>
                   <div>
                     <strong>{post.user}</strong>
@@ -3370,10 +3369,10 @@ const PredictiveHealth = ({ user, userData }) => {
           {/* Recommendations */}
           <div style={styles.recommendations}>
             <h4>Personalized Recommendations</h4>
-            <div style={styles.recommendationsList}>
+            <div style={styles.healthRecommendationsList}>
               {predictions.recommendations.map((tip, index) => (
-                <div key={index} style={styles.recommendationItem}>
-                  <span style={styles.recommendationIcon}>💡</span>
+                <div key={index} style={styles.healthRecommendationItem}>
+                  <span style={styles.healthRecommendationIcon}>💡</span>
                   {tip}
                 </div>
               ))}
@@ -4001,7 +4000,7 @@ const styles = {
     borderRadius: '12px',
     marginBottom: '1.5rem'
   },
-  welcomeMessage: {
+  chatWelcomeMessage: {
     textAlign: 'center',
     padding: '3rem 2rem',
     color: '#666'
@@ -4308,11 +4307,6 @@ const styles = {
     fontSize: '2rem',
     marginBottom: '0.5rem'
   },
-  levelLabel: {
-    fontWeight: '600',
-    fontSize: '1rem',
-    marginBottom: '0.5rem'
-  },
   levelDescription: {
     fontSize: '0.8rem',
     color: 'rgba(255,255,255,0.8)'
@@ -4377,12 +4371,6 @@ const styles = {
     marginBottom: '1rem',
     flexWrap: 'wrap',
     gap: '1rem'
-  },
-  planTitle: {
-    margin: 0,
-    color: '#333',
-    fontSize: '1.2rem',
-    fontWeight: 'bold'
   },
   planList: {
     display: 'flex',
@@ -4607,7 +4595,7 @@ planCard: {
   borderRadius: '12px'
 },
 
-planTitle: {
+planTitleHero: {
   margin: '0 0 1rem 0',
   fontSize: '1.5rem'
 },
@@ -4702,14 +4690,14 @@ planActions: {
   justifyContent: 'flex-end'
 },
 
-goalsGrid: {
+fitnessGoalsGrid: {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
   gap: '1.5rem',
   marginTop: '1rem'
 },
 
-goalCard: {
+fitnessGoalCard: {
   background: 'white',
   padding: '1.5rem',
   borderRadius: '12px',
@@ -4719,7 +4707,7 @@ goalCard: {
   position: 'relative'
 },
 
-activeGoalCard: {
+activeFitnessGoalCard: {
   borderColor: '#667eea',
   background: 'rgba(102, 126, 234, 0.05)',
   transform: 'translateY(-2px)',
@@ -5290,7 +5278,7 @@ postHeader: {
   marginBottom: '1rem'
 },
 
-userInfo: {
+postUserInfo: {
   display: 'flex',
   alignItems: 'center',
   gap: '1rem'
@@ -5645,20 +5633,20 @@ recommendations: {
   border: '1px solid #c8e6c9'
 },
 
-recommendationsList: {
+healthRecommendationsList: {
   display: 'flex',
   flexDirection: 'column',
   gap: '1rem'
 },
 
-recommendationItem: {
+healthRecommendationItem: {
   display: 'flex',
   alignItems: 'flex-start',
   gap: '1rem',
   color: '#2e7d32'
 },
 
-recommendationIcon: {
+healthRecommendationIcon: {
   fontSize: '1.2rem',
   flexShrink: 0
 },
