@@ -456,9 +456,6 @@ const UserProfileSetup = ({ user, onComplete }) => {
   );
 };
 
-// Add this import at the top of your App.js
-import mentalHealthAI from './services/aiService';
-
 // Then replace the MentalWellness component with:
 
 const MentalWellness = ({ user, userData }) => {
