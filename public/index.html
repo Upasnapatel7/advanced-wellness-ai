@@ -3,41 +3,164 @@
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Theme Color - Supported by Chrome, Edge, Safari 15+, Opera -->
+    <meta name="theme-color" content="#667eea" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#764ba2" media="(prefers-color-scheme: dark)">
+    
+    <!-- Apple Specific Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="AAROHAN">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- Microsoft Specific Meta Tags -->
+    <meta name="msapplication-TileColor" content="#667eea">
+    <meta name="msapplication-tap-highlight" content="no">
+    
+    <!-- App Description -->
     <meta
       name="description"
-      content="Web site created using create-react-app"
+      content="AAROHAN - Your complete mental & physical health companion with AI coaching, brain games, community and relaxation support"
     />
+    
+    <!-- PWA Icons -->
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!--
-      manifest.json provides metadata used when your web app is installed on a
-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-    -->
+    <link rel="icon" type="image/png" sizes="32x32" href="%PUBLIC_URL%/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="%PUBLIC_URL%/favicon-16x16.png">
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <!--
-      Notice the use of %PUBLIC_URL% in the tags above.
-      It will be replaced with the URL of the `public` folder during the build.
-      Only files inside the `public` folder can be referenced from the HTML.
+    
+    <title>AAROHAN - Mind & Body Health Companion</title>
+    
+    <!-- Preload critical resources -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <style>
+      /* Loading screen styles */
+      #loading-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        font-family: Arial, sans-serif;
+        z-index: 9999;
+      }
+      
+      .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid rgba(255,255,255,0.3);
+        border-top: 4px solid white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+      }
+      
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
 
-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-      work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
-    -->
-    <title>React App</title>
+      /* CSS-based theme color for broader browser support */
+      :root {
+        --primary-color: #667eea;
+        --secondary-color: #764ba2;
+        --background-color: #ffffff;
+      }
+      
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --primary-color: #764ba2;
+          --background-color: #1a1a1a;
+        }
+      }
+
+      /* Prevent excessive zoom on mobile inputs */
+      @media screen and (max-width: 768px) {
+        input, select, textarea {
+          font-size: 16px !important;
+        }
+      }
+
+      /* Fallback background for browsers without theme-color support */
+      body {
+        background-color: var(--background-color);
+      }
+    </style>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+      <div class="loading-spinner"></div>
+      <h2>🧠 AAROHAN</h2>
+      <p>Loading your health companion...</p>
+    </div>
+    
+    <noscript>
+      <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
+        <h2>JavaScript Required</h2>
+        <p>You need to enable JavaScript to run this app.</p>
+      </div>
+    </noscript>
+    
     <div id="root"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
+    
+    <script>
+      // Remove loading screen when app loads
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          const loadingScreen = document.getElementById('loading-screen');
+          if (loadingScreen) {
+            loadingScreen.style.opacity = '0';
+            loadingScreen.style.transition = 'opacity 0.5s ease';
+            setTimeout(() => loadingScreen.remove(), 500);
+          }
+        }, 1000);
+      });
+      
+      // Service Worker Registration for PWA
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js')
+            .then(function(registration) {
+              console.log('SW registered: ', registration);
+            })
+            .catch(function(registrationError) {
+              console.log('SW registration failed: ', registrationError);
+            });
+        });
+      }
 
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
+      // Prevent zoom on double-tap (alternative to user-scalable=no)
+      document.addEventListener('touchstart', function(event) {
+        if (event.touches.length > 1) {
+          event.preventDefault();
+        }
+      }, { passive: false });
 
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
+      let lastTouchEnd = 0;
+      document.addEventListener('touchend', function(event) {
+        const now = (new Date()).getTime();
+        if (now - lastTouchEnd <= 300) {
+          event.preventDefault();
+        }
+        lastTouchEnd = now;
+      }, false);
+
+      // Enhanced browser compatibility detection
+      console.log('Browser supports theme-color:', 'theme-color' in document.createElement('meta'));
+    </script>
   </body>
 </html>
