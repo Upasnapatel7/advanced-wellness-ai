@@ -8,9 +8,9 @@ class MentalHealthAIService {
     this.conversationHistory = [];
     this.userContext = {};
     this.models = [
-      'https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium',
-      'https://api-inference.huggingface.co/models/google/flan-t5-base'
-    ];
+  'https://corsproxy.io/?https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium',
+  'https://corsproxy.io/?https://api-inference.huggingface.co/models/google/flan-t5-base'
+];
     console.log('AI Service initialized. Hugging Face Key exists:', !!this.huggingfaceKey);
     console.log('OpenAI Key exists:', !!this.openaiKey);
   }
