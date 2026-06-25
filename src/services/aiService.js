@@ -3,7 +3,6 @@ import axios from 'axios';
 
 class MentalHealthAIService {
   constructor() {
-    // This will read from Vercel environment variables
     this.apiKey = process.env.REACT_APP_HUGGINGFACE_API_KEY;
     this.conversationHistory = [];
     this.userContext = {};
@@ -25,27 +24,23 @@ class MentalHealthAIService {
       return this.getCrisisResponse();
     }
 
-    // If no API key, use fallback
     if (!this.apiKey) {
-      console.warn('No Hugging Face API key found. Using fallback responses.');
-      return {
-        text: this.getFallbackResponse(message),
-        sentiment: this.analyzeSentiment(message),
-        needsHelp: false,
-        isCrisis: false
-      };
+      console.warn('No Hugging Face API key found.');
+      return this.getTherapeuticFallback(message);
     }
 
     try {
-      // Try Hugging Face API
+      // 🔥 USING LLAMA-3-8B - The best free therapist model
       const response = await axios.post(
-        'https://api-inference.huggingface.co/models/facebook/blenderbot-400M-distill',
+        'https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct',
         {
-          inputs: message,
+          inputs: this.buildTherapyPrompt(message, chatHistory),
           parameters: {
-            max_length: 100,
+            max_new_tokens: 250,
             temperature: 0.7,
-            top_p: 0.9
+            top_p: 0.9,
+            do_sample: true,
+            return_full_text: false
           }
         },
         {
@@ -58,8 +53,11 @@ class MentalHealthAIService {
 
       let aiResponse = response.data[0]?.generated_text || '';
       
+      // Clean up the response
+      aiResponse = aiResponse.replace(/Therapist:/g, '').trim();
+      
       if (!aiResponse || aiResponse.length < 5) {
-        aiResponse = this.getFallbackResponse(message);
+        return this.getTherapeuticFallback(message);
       }
 
       return {
@@ -70,32 +68,113 @@ class MentalHealthAIService {
       };
 
     } catch (error) {
-      console.error('Hugging Face API Error:', error.response?.status, error.response?.data || error.message);
-      // Fallback to local responses
-      return {
-        text: this.getFallbackResponse(message),
-        sentiment: this.analyzeSentiment(message),
-        needsHelp: false,
-        isCrisis: false
-      };
+      console.error('Llama API Error:', error.response?.status, error.response?.data || error.message);
+      
+      // If Llama fails, try Mistral as fallback
+      try {
+        return await this.getMistralResponse(message);
+      } catch {
+        return this.getTherapeuticFallback(message);
+      }
     }
   }
 
+  // 🔥 Build therapy-style prompt
+  buildTherapyPrompt(message, chatHistory) {
+    const recentHistory = chatHistory.slice(-5).map(msg => 
+      `${msg.type === 'user' ? 'Client' : 'Therapist'}: ${msg.text}`
+    ).join('\n');
+
+    return `You are a compassionate, licensed therapist. Your role is to provide empathetic, non-judgmental support.
+
+Your approach:
+- Listen actively and validate feelings
+- Ask open-ended questions to encourage reflection
+- Use therapeutic techniques like CBT, ACT, and mindfulness
+- Never give medical advice or diagnose
+- Create a safe, supportive space
+
+Client context:
+- Name: ${this.userContext.name || 'Client'}
+- Background: ${this.userContext.fitnessGoal || 'General wellness'}
+
+Client's message: "${message}"
+
+${recentHistory ? `\nRecent conversation:\n${recentHistory}\n` : ''}
+
+Therapist's response (warm, empathetic, therapeutic):`;
+  }
+
+  // 🔥 Mistral as fallback (also free)
+  async getMistralResponse(message) {
+    const response = await axios.post(
+      'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3',
+      {
+        inputs: `[INST] You are a compassionate therapist. Respond with warmth and empathy to this client: ${message} [/INST]`,
+        parameters: {
+          max_new_tokens: 200,
+          temperature: 0.7,
+          top_p: 0.9
+        }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    let aiResponse = response.data[0]?.generated_text || '';
+    aiResponse = aiResponse.replace(/\[INST\].*\[\/INST\]/, '').trim();
+    
+    return {
+      text: aiResponse || this.getTherapeuticFallback(message),
+      sentiment: this.analyzeSentiment(message),
+      needsHelp: false,
+      isCrisis: false
+    };
+  }
+
+  // 🔥 Therapeutic fallback (only if ALL APIs fail)
+  getTherapeuticFallback(message) {
+    const responses = [
+      "I hear you, and I want you to know that your feelings are completely valid. Can you tell me more about what's been on your mind lately?",
+      "That sounds really difficult. I'm here with you. What would feel most supportive for you right now?",
+      "Thank you for sharing this with me. It takes courage to open up. How long have you been feeling this way?",
+      "I'm sitting with you in this moment. Your feelings matter. What do you think you need right now?",
+      "I appreciate your honesty. Let's explore this together - what brought these feelings up for you?"
+    ];
+    return responses[Math.floor(Math.random() * responses.length)];
+  }
+
   analyzeSentiment(text) {
-    const positive = ['good', 'great', 'happy', 'joy', 'excited', 'grateful', 'wonderful', 'amazing'];
-    const negative = ['sad', 'depressed', 'angry', 'anxious', 'stress', 'terrible', 'awful', 'hopeless'];
-    
     const words = text.toLowerCase().split(' ');
-    let posScore = words.filter(w => positive.includes(w)).length;
-    let negScore = words.filter(w => negative.includes(w)).length;
+    const emotions = {
+      anxiety: ['anxious', 'worry', 'nervous', 'panic', 'overwhelm', 'scared', 'fear', 'racing'],
+      depression: ['sad', 'depressed', 'hopeless', 'empty', 'numb', 'tired', 'exhausted', 'worthless'],
+      loneliness: ['lonely', 'alone', 'isolated', 'disconnected', 'unseen', 'unheard'],
+      anger: ['angry', 'frustrated', 'mad', 'irritated', 'furious', 'rage', 'resentful'],
+      grief: ['grief', 'loss', 'miss', 'passed away', 'died', 'mourning', 'heartbroken'],
+      shame: ['ashamed', 'embarrassed', 'humiliated', 'worthless', 'failure', 'stupid', 'should have']
+    };
     
-    if (posScore > negScore) return 'positive';
-    if (negScore > posScore) return 'negative';
-    return 'neutral';
+    let detected = 'neutral';
+    let maxScore = 0;
+    
+    Object.entries(emotions).forEach(([emotion, keywords]) => {
+      const score = keywords.filter(k => words.includes(k)).length;
+      if (score > maxScore) {
+        maxScore = score;
+        detected = emotion;
+      }
+    });
+    
+    return detected;
   }
 
   isCrisis(text) {
-    const crisisWords = ['suicide', 'kill myself', 'want to die', 'harm myself', 'end it all', 'no hope'];
+    const crisisWords = ['suicide', 'kill myself', 'want to die', 'harm myself', 'end it all', 'no hope', 'give up'];
     return crisisWords.some(word => text.toLowerCase().includes(word));
   }
 
@@ -103,41 +182,20 @@ class MentalHealthAIService {
     return {
       text: `🚨 **I'm really concerned about what you're sharing**
 
-Please reach out for immediate support:
+I hear that you're in tremendous pain right now. Please reach out for immediate support:
+
+**Crisis Resources:**
 • **988 Suicide & Crisis Lifeline**: Call or text 988
 • **Crisis Text Line**: Text HOME to 741741
 • **Emergency Services**: 911
 
-You don't have to face this alone. 💙`,
+You don't have to face this alone. These services are available 24/7 with trained professionals who can provide immediate support.
+
+Would you like to talk about what's happening right now? 💙`,
       sentiment: 'crisis',
       needsHelp: true,
       isCrisis: true
     };
-  }
-
-  getFallbackResponse(message) {
-    const lowerMsg = message.toLowerCase();
-    
-    if (lowerMsg.match(/^(hi|hello|hey|good morning|good afternoon|good evening)/)) {
-      return `Hello ${this.userContext.name || 'there'}! 👋 How are you feeling today? I'm here to listen.`;
-    }
-
-    if (lowerMsg.includes('how are you')) {
-      return "I'm doing well, thank you for asking! 😊 How are YOU feeling today?";
-    }
-
-    if (lowerMsg.includes('thank')) {
-      return "You're so welcome! 🤗 Is there anything else on your mind?";
-    }
-
-    const responses = [
-      "I appreciate you sharing that with me. 🤗 Could you tell me more about what's going on?",
-      "That sounds really important. 💭 How long have you been feeling this way?",
-      "Thank you for trusting me. 💙 What support would be most helpful for you right now?",
-      "I hear you. Your feelings are completely valid. 🌟 Would you like to explore this together?"
-    ];
-    
-    return responses[Math.floor(Math.random() * responses.length)];
   }
 
   storeConversation(userMessage, aiResponse) {
