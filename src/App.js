@@ -455,6 +455,11 @@ const UserProfileSetup = ({ user, onComplete }) => {
   );
 };
 
+// Add this import at the top of your App.js
+import mentalHealthAI from './services/aiService';
+
+// Then replace the MentalWellness component with:
+
 const MentalWellness = ({ user, userData }) => {
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -473,222 +478,18 @@ const MentalWellness = ({ user, userData }) => {
 
   const messagesEndRef = useRef(null);
 
-  // Update input text when voice transcript changes
   useEffect(() => {
     if (transcript) {
       setInputText(transcript);
     }
   }, [transcript]);
 
-  const shouldSuggestProfessionalHelp = (userMessage) => {
-    const professionalKeywords = [
-      'therapist', 'counselor', 'psychiatrist', 'professional help',
-      'diagnosis', 'medication', 'therapy', 'cant cope'
-    ];
-
-    const message = (userMessage || '').toLowerCase();
-    return professionalKeywords.some(keyword => message.includes(keyword));
-  };
-
-  // Enhanced simulated responses
-  const generateEnhancedResponse = async (userMessage, isUrgent) => {
-    // Analyze the user's message for emotional content
-    const message = userMessage.toLowerCase();
-    
-    // Emotional pattern detection
-    const emotionalPatterns = {
-      anxiety: {
-        keywords: ['anxious', 'worry', 'nervous', 'panic', 'overwhelm', 'scared', 'fear', 'racing thoughts', 'heart pounding', 'cant breathe', 'on edge'],
-        validation: [
-          "I can feel the anxiety in your words, and I want you to know I'm here with you right now.",
-          "That sense of worry and unease you're describing sounds incredibly overwhelming.",
-          "I hear the nervous energy in what you're sharing - that must feel so unsettling."
-        ],
-        copingStrategies: [
-          "**Grounding Technique**: Name 5 things you can see, 4 things you can touch, 3 things you can hear, 2 things you can smell, and 1 thing you can taste.",
-          "**Breathing Exercise**: Try 4-7-8 breathing: inhale for 4 counts, hold for 7, exhale for 8. Repeat 3 times.",
-          "**Physical Release**: Shake out your hands and arms vigorously for 30 seconds to release nervous energy.",
-          "**Thought Reframing**: Ask yourself: 'What's the actual evidence for this worry? What's more likely to happen?'"
-        ]
-      },
-      depression: {
-        keywords: ['sad', 'depressed', 'hopeless', 'empty', 'numb', 'cant feel', 'nothing matters', 'tired', 'exhausted', 'dont care', 'pointless'],
-        validation: [
-          "I can feel the heaviness in what you're sharing, and I want you to know I'm sitting with you in this.",
-          "That sense of emptiness and numbness you're describing sounds incredibly difficult to carry.",
-          "I hear the profound tiredness in your words - both emotional and physical exhaustion."
-        ],
-        copingStrategies: [
-          "**Small Action**: What's one tiny thing you could do right now? Even just drinking a glass of water or opening a window.",
-          "**Connection**: Reach out to one person, even just to say 'I'm having a hard day.' You don't have to explain everything.",
-          "**Self-Compassion**: Place your hand on your heart and say 'This is really hard right now, and I'm doing the best I can.'",
-          "**Nature**: If possible, step outside for 5 minutes. Notice the air, the sky, any natural elements around you."
-        ]
-      },
-      stress: {
-        keywords: ['stress', 'overwhelm', 'pressure', 'burnt out', 'exhausted', 'too much', 'cant handle', 'drowning', 'piled up'],
-        validation: [
-          "I can truly sense the weight you're carrying right now - it sounds like everything has been piling up.",
-          "That feeling of being completely overwhelmed and stretched thin must be incredibly draining.",
-          "I hear the pressure and demands you're facing - it sounds like you're carrying so much right now."
-        ],
-        copingStrategies: [
-          "**Prioritize**: What's one thing you could let go of or postpone today? Give yourself permission to set something down.",
-          "**Break It Down**: Take your biggest stressor and break it into the smallest possible next step.",
-          "**Body Check**: Scan your body for tension - shoulders, jaw, forehead. Gently release each area.",
-          "**Time Boundary**: Set a timer for 25 minutes of focused work, then 5 minutes of complete rest."
-        ]
-      },
-      loneliness: {
-        keywords: ['lonely', 'alone', 'isolated', 'no one understands', 'by myself', 'no friends', 'disconnected', 'separate', 'unseen'],
-        validation: [
-          "I hear the loneliness in your words, and I want you to know I'm here with you right now.",
-          "That feeling of being alone with your thoughts and struggles can feel so heavy and isolating.",
-          "I sense the disconnection you're describing - it's incredibly painful to feel unseen or misunderstood."
-        ],
-        copingStrategies: [
-          "**Virtual Connection**: Join an online community or forum about something you enjoy, even if you just observe at first.",
-          "**Self-Companionship**: Write a letter to yourself as if you were comforting a dear friend.",
-          "**Shared Experience**: Listen to a podcast or watch a video where people discuss similar feelings.",
-          "**Small Outreach**: Send a simple message to someone: 'Thinking of you' or 'Hope you're having an okay day.'"
-        ]
-      },
-      anger: {
-        keywords: ['angry', 'mad', 'frustrated', 'irritated', 'pissed', 'furious', 'rage', 'resentful', 'bitter', 'annoyed'],
-        validation: [
-          "I can hear the intensity and frustration in what you're sharing - your feelings make complete sense.",
-          "That anger you're feeling is valuable information about what matters to you and what you need.",
-          "I sense the justified frustration in your words - it sounds like your boundaries or values have been crossed."
-        ],
-        copingStrategies: [
-          "**Physical Release**: Punch a pillow, scream into a towel, or do vigorous exercise to release the energy safely.",
-          "**Write It Out**: Write everything you're feeling without filtering, then tear it up or delete it.",
-          "**Cool Down**: Hold an ice cube in your hand or splash cold water on your face to reset your nervous system.",
-          "**Channel Energy**: Use the angry energy for a productive task like cleaning or organizing."
-        ]
-      },
-      grief: {
-        keywords: ['grief', 'loss', 'miss', 'passed away', 'died', 'mourning', 'heartbroken', 'empty space', 'gone'],
-        validation: [
-          "I hear the profound loss in your words, and I'm sitting with you in this pain.",
-          "That heartbreak and emptiness you're feeling honors the significance of what you've lost.",
-          "I sense the depth of your mourning - grief has its own timeline and there's no right way to feel."
-        ],
-        copingStrategies: [
-          "**Memory Honoring**: Light a candle, look at photos, or engage in an activity that connects you to what you've lost.",
-          "**Gentle Movement**: Go for a slow walk, letting your body move at the pace your heart needs.",
-          "**Small Rituals**: Create a daily small ritual - a particular tea, a specific song, a moment of silence.",
-          "**Support Seeking**: Reach out to others who understand this specific loss, or consider a grief support group."
-        ]
-      },
-      shame: {
-        keywords: ['ashamed', 'embarrassed', 'humiliated', 'worthless', 'not good enough', 'failure', 'stupid', 'should have'],
-        validation: [
-          "I hear the shame and self-judgment in your words, and I want you to know I'm here without judgment.",
-          "That feeling of embarrassment and self-criticism can feel so heavy and isolating.",
-          "I sense the vulnerability in what you're sharing - it takes courage to speak about these feelings."
-        ],
-        copingStrategies: [
-          "**Self-Compassion Break**: Say to yourself: 'This is a moment of suffering. Suffering is part of life. May I be kind to myself.'",
-          "**Reality Check**: Ask: 'Would I judge a friend this harshly for the same situation? What would I say to them?'",
-          "**Share Safely**: Consider telling one trusted person about your feelings - shame loses power when shared.",
-          "**Values Reminder**: Connect with what you truly value, separate from this specific situation."
-        ]
-      }
-    };
-
-    // Find the best matching emotional pattern
-    let bestMatch = 'general';
-    let highestScore = 0;
-
-    Object.entries(emotionalPatterns).forEach(([emotion, pattern]) => {
-      const score = pattern.keywords.filter(keyword => message.includes(keyword)).length;
-      if (score > highestScore) {
-        highestScore = score;
-        bestMatch = emotion;
-      }
-    });
-
-    const getRandomElement = (array) => array[Math.floor(Math.random() * array.length)];
-    
-    const validation = getRandomElement(emotionalPatterns[bestMatch]?.validation || [
-      "Thank you for sharing what's on your mind. I'm here to listen and support you.",
-      "I hear you, and I want you to know that whatever you're feeling right now is valid.",
-      "Thank you for trusting me with this. I'm here with you in whatever you're experiencing."
-    ]);
-
-    const copingStrategy = getRandomElement(emotionalPatterns[bestMatch]?.copingStrategies || [
-      "**Mindful Breathing**: Take 3 deep breaths, noticing the sensation of air moving in and out of your body.",
-      "**Grounding**: Look around and name 3 safe things you can see in your environment.",
-      "**Self-Care Check**: What's one small act of kindness you could offer yourself right now?",
-      "**Perspective**: Remember that feelings are temporary visitors - they come and go, even when they feel permanent."
-    ]);
-
-    const followUpQuestions = [
-      "What's it like carrying these feelings right now?",
-      "How long have you been feeling this way?",
-      "What's been happening that might be contributing to these feelings?",
-      "Is there someone in your life you feel comfortable talking to about this?",
-      "What does support look like for you right now?",
-      "Have you noticed any patterns in when these feelings come up?",
-      "What usually helps you feel even a little bit better?",
-      "What would feel supportive or helpful right now?"
-    ];
-
-    const followUp = getRandomElement(followUpQuestions);
-
-    // Construct the response with emotional validation first, then coping strategies
-    const response = `
-${validation}
-
-I want you to know that you're not alone in this. What you're experiencing is human, and it makes sense given what you're going through.
-
-**Here's something you could try right now:**
-${copingStrategy}
-
-${followUp}
-
-Remember: Your feelings are valid messengers, not permanent residents. You have survived 100% of your difficult days so far. 💙
-    `.trim();
-
-    return {
-      response,
-      needsProfessionalHelp: isUrgent || shouldSuggestProfessionalHelp(userMessage),
-      isCrisis: false
-    };
-  };
-
-  const generateAIResponse = async (userMessage) => {
-    // Crisis detection first
-    const crisisKeywords = ['suicide', 'kill myself', 'end it all', 'want to die', 'harm myself', 'hurting myself'];
-    const urgentKeywords = ['emergency', 'help now', 'immediately', 'cant cope', 'breaking down'];
-    
-    const message = (userMessage || '').toLowerCase();
-    const isCrisis = crisisKeywords.some(keyword => message.includes(keyword));
-    const isUrgent = urgentKeywords.some(keyword => message.includes(keyword));
-
-    if (isCrisis) {
-      return {
-        response: `🚨 **I'm really concerned about what you're sharing**
-
-I hear that you're in tremendous pain right now, and I want you to make sure you get immediate support from people who are trained to help in these situations.
-
-**Please reach out to these resources right now:**
-• **National Suicide Prevention Lifeline: 988**
-• **Crisis Text Line: Text HOME to 741741**
-• **Emergency Services: 911**
-
-You don't have to face this alone. These services are available 24/7 with trained professionals who can provide the support you need right now.
-
-Would you like me to stay here with you while you reach out for help?`,
-        needsProfessionalHelp: true,
-        isCrisis: true
-      };
+  // Set user context for AI
+  useEffect(() => {
+    if (userData) {
+      mentalHealthAI.setUserContext(userData);
     }
-
-    // Always use enhanced simulated responses
-    return generateEnhancedResponse(userMessage, isUrgent);
-  };
+  }, [userData]);
 
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
@@ -704,14 +505,16 @@ Would you like me to stay here with you while you reach out for help?`,
     setConnectionError(false);
 
     try {
-      const aiResponse = await generateAIResponse(inputText);
+      // 🔥 REAL AI CALL - uses Hugging Face MentalHealth-16K model
+      const aiResponse = await mentalHealthAI.getResponse(inputText, chatHistory);
       
       const aiMessage = { 
         type: 'ai', 
-        text: aiResponse?.response || "I'm here to listen. Could you tell me more about what you're experiencing?",
+        text: aiResponse.text,
         timestamp: new Date(),
-        needsProfessionalHelp: aiResponse?.needsProfessionalHelp || false,
-        isCrisis: aiResponse?.isCrisis || false
+        needsProfessionalHelp: aiResponse?.needsHelp || false,
+        isCrisis: aiResponse?.isCrisis || false,
+        sentiment: aiResponse?.sentiment || 'neutral'
       };
       
       setChatHistory(prev => [...prev, aiMessage]);
@@ -720,17 +523,20 @@ Would you like me to stay here with you while you reach out for help?`,
       if (aiResponse?.isCrisis) {
         setCrisisMode(true);
         setShowProfessionalHelp(true);
-      } else if (aiResponse?.needsProfessionalHelp) {
+      } else if (aiResponse?.needsHelp) {
         setShowProfessionalHelp(true);
       }
 
+      // Store conversation for context
+      mentalHealthAI.storeConversation(inputText, aiResponse.text);
+
       // Speak the response (if not in crisis mode)
       if (!aiResponse?.isCrisis) {
-        const speakableText = (aiResponse?.response || '').replace(/\*\*/g, '').replace(/\n/g, '. ');
+        const speakableText = (aiResponse?.text || '').replace(/\*\*/g, '').replace(/\n/g, '. ');
         speakText(speakableText);
       }
 
-      // Save to Firebase
+      // Save to Firebase with real sentiment data
       if (user) {
         await updateDoc(doc(db, 'users', user.uid), {
           points: (userData?.points || 0) + 5,
@@ -739,8 +545,9 @@ Would you like me to stay here with you while you reach out for help?`,
             points: 5,
             timestamp: new Date().toISOString(),
             message: inputText.substring(0, 200),
-            aiResponse: aiResponse?.response?.substring(0, 200) || '',
-            suggestedProfessionalHelp: aiResponse?.needsProfessionalHelp || false,
+            aiResponse: aiResponse?.text?.substring(0, 200) || '',
+            sentiment: aiResponse?.sentiment || 'neutral',
+            suggestedProfessionalHelp: aiResponse?.needsHelp || false,
             isCrisis: aiResponse?.isCrisis || false
           })
         });
@@ -752,7 +559,7 @@ Would you like me to stay here with you while you reach out for help?`,
       console.error('Error in AI conversation:', error);
       const errorMessage = { 
         type: 'ai', 
-        text: "I apologize, but I'm having trouble connecting to our support system right now. Please try again in a moment.", 
+        text: "I apologize, but I'm having trouble connecting right now. Please try again in a moment.", 
         timestamp: new Date(),
         isError: true
       };
@@ -805,7 +612,6 @@ Would you like me to stay here with you while you reach out for help?`,
     }
   };
 
-  // Professional Help Component
   const ProfessionalHelpSection = () => (
     <div style={styles.professionalHelpSection}>
       <div style={styles.professionalHelpHeader}>
@@ -829,7 +635,6 @@ Would you like me to stay here with you while you reach out for help?`,
       )}
 
       <div style={styles.resourceCategories}>
-        {/* Crisis Resources */}
         <div style={styles.resourceCategory}>
           <h4>🆘 24/7 Crisis Support</h4>
           {professionalResources.crisisHotlines.map((resource, index) => (
@@ -840,19 +645,12 @@ Would you like me to stay here with you while you reach out for help?`,
               <div style={styles.resourceMeta}>
                 <span>Available: {resource.available}</span>
               </div>
-              <a 
-                href={resource.url} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                style={styles.resourceLink}
-              >
+              <a href={resource.url} target="_blank" rel="noopener noreferrer" style={styles.resourceLink}>
                 Visit Website →
               </a>
             </div>
           ))}
         </div>
-
-        {/* Online Therapy */}
         <div style={styles.resourceCategory}>
           <h4>👥 Online Therapy Platforms</h4>
           {professionalResources.onlineTherapy.map((resource, index) => (
@@ -868,19 +666,12 @@ Would you like me to stay here with you while you reach out for help?`,
                   <span key={spec} style={styles.specializationTag}>{spec}</span>
                 ))}
               </div>
-              <a 
-                href={resource.url} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                style={styles.resourceLink}
-              >
+              <a href={resource.url} target="_blank" rel="noopener noreferrer" style={styles.resourceLink}>
                 Visit Website →
               </a>
             </div>
           ))}
         </div>
-
-        {/* Mental Health Apps */}
         <div style={styles.resourceCategory}>
           <h4>📱 Mental Health Apps</h4>
           {professionalResources.mentalHealthApps.map((resource, index) => (
@@ -892,12 +683,7 @@ Would you like me to stay here with you while you reach out for help?`,
                   <span key={feature} style={styles.featureTag}>{feature}</span>
                 ))}
               </div>
-              <a 
-                href={resource.url} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                style={styles.resourceLink}
-              >
+              <a href={resource.url} target="_blank" rel="noopener noreferrer" style={styles.resourceLink}>
                 Get App →
               </a>
             </div>
@@ -918,7 +704,6 @@ Would you like me to stay here with you while you reach out for help?`,
         <p style={styles.pageSubtitle}>Compassionate AI support with connections to professional help when needed</p>
       </div>
 
-      {/* Crisis Alert Banner */}
       {crisisMode && (
         <div style={styles.crisisBanner}>
           <div style={styles.crisisContent}>
@@ -931,7 +716,6 @@ Would you like me to stay here with you while you reach out for help?`,
         </div>
       )}
 
-      {/* Connection Error Alert */}
       {connectionError && (
         <div style={styles.errorBanner}>
           <span>⚠️ Connection issue - using enhanced support mode</span>
@@ -939,43 +723,26 @@ Would you like me to stay here with you while you reach out for help?`,
       )}
 
       <div style={styles.chatLayout}>
-        {/* Quick Actions Sidebar */}
         <div style={styles.sidebar}>
           <div style={styles.quickActions}>
             <h4 style={styles.sidebarTitle}>Quick Support</h4>
-            <button 
-              onClick={() => handleQuickAction('crisis')}
-              style={styles.crisisButton}
-            >
+            <button onClick={() => handleQuickAction('crisis')} style={styles.crisisButton}>
               🚨 Crisis Support
             </button>
-            <button 
-              onClick={() => handleQuickAction('anxiety')}
-              style={styles.quickButton}
-            >
+            <button onClick={() => handleQuickAction('anxiety')} style={styles.quickButton}>
               😰 Anxiety Support
             </button>
-            <button 
-              onClick={() => handleQuickAction('depression')}
-              style={styles.quickButton}
-            >
+            <button onClick={() => handleQuickAction('depression')} style={styles.quickButton}>
               😔 Depression Support
             </button>
-            <button 
-              onClick={() => handleQuickAction('stress')}
-              style={styles.quickButton}
-            >
+            <button onClick={() => handleQuickAction('stress')} style={styles.quickButton}>
               😫 Stress Support
             </button>
-            <button 
-              onClick={() => setShowProfessionalHelp(true)}
-              style={styles.professionalHelpButton}
-            >
+            <button onClick={() => setShowProfessionalHelp(true)} style={styles.professionalHelpButton}>
               👥 Professional Help
             </button>
           </div>
 
-          {/* Voice Features */}
           {hasRecognitionSupport && (
             <div style={styles.voiceSection}>
               <h4 style={styles.sidebarTitle}>Voice Features</h4>
@@ -988,17 +755,13 @@ Would you like me to stay here with you while you reach out for help?`,
               >
                 {isListening ? '🛑 Stop Listening' : '🎤 Voice Input'}
               </button>
-              <button 
-                onClick={stopSpeech}
-                style={styles.stopSpeechButton}
-              >
+              <button onClick={stopSpeech} style={styles.stopSpeechButton}>
                 🔇 Stop Voice
               </button>
             </div>
           )}
         </div>
 
-        {/* Main Chat Area */}
         <div style={styles.mainChatArea}>
           <div style={styles.chatSection}>
             <div style={styles.chatContainer}>
@@ -1031,6 +794,16 @@ Would you like me to stay here with you while you reach out for help?`,
                           {(message.text || '').split('\n').map((line, lineIndex) => (
                             <p key={lineIndex} style={styles.messageLine}>{line}</p>
                           ))}
+                          {message.sentiment && message.type === 'ai' && (
+                            <div style={{ 
+                              fontSize: '0.7rem', 
+                              opacity: 0.6, 
+                              marginTop: '4px',
+                              fontStyle: 'italic'
+                            }}>
+                              Sentiment: {message.sentiment}
+                            </div>
+                          )}
                         </div>
                         <div style={styles.messageTime}>
                           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1050,7 +823,6 @@ Would you like me to stay here with you while you reach out for help?`,
                 )}
               </div>
 
-              {/* Input Area */}
               <div style={styles.chatInputContainer}>
                 <div style={styles.inputArea}>
                   <div style={styles.inputWrapper}>
@@ -1108,7 +880,6 @@ Would you like me to stay here with you while you reach out for help?`,
         </div>
       </div>
 
-      {/* Professional Help Modal */}
       {showProfessionalHelp && <ProfessionalHelpSection />}
     </div>
   );
