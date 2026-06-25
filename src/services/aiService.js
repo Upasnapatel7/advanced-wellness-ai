@@ -3,10 +3,16 @@ import axios from 'axios';
 
 class MentalHealthAIService {
   constructor() {
-    this.apiKey = process.env.REACT_APP_HUGGINGFACE_API_KEY;
+    this.huggingfaceKey = process.env.REACT_APP_HUGGINGFACE_API_KEY;
+    this.openaiKey = process.env.REACT_APP_OPENAI_API_KEY;
     this.conversationHistory = [];
     this.userContext = {};
-    console.log('AI Service initialized. API Key exists:', !!this.apiKey);
+    this.models = [
+      'https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium',
+      'https://api-inference.huggingface.co/models/google/flan-t5-base'
+    ];
+    console.log('AI Service initialized. Hugging Face Key exists:', !!this.huggingfaceKey);
+    console.log('OpenAI Key exists:', !!this.openaiKey);
   }
 
   setUserContext(userData) {
@@ -24,75 +30,134 @@ class MentalHealthAIService {
       return this.getCrisisResponse();
     }
 
-    if (!this.apiKey) {
-      console.warn('No Hugging Face API key found.');
-      return this.getTherapeuticFallback(message);
-    }
-
-    try {
-      // 🔥 USING LLAMA-3-8B - The best free therapist model
-      const response = await axios.post(
-        'https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct',
-        {
-          inputs: this.buildTherapyPrompt(message, chatHistory),
-          parameters: {
-            max_new_tokens: 250,
-            temperature: 0.7,
-            top_p: 0.9,
-            do_sample: true,
-            return_full_text: false
-          }
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      let aiResponse = response.data[0]?.generated_text || '';
-      
-      // Clean up the response
-      aiResponse = aiResponse.replace(/Therapist:/g, '').trim();
-      
-      if (!aiResponse || aiResponse.length < 5) {
-        return this.getTherapeuticFallback(message);
-      }
-
-      return {
-        text: aiResponse,
-        sentiment: this.analyzeSentiment(message),
-        needsHelp: false,
-        isCrisis: false
-      };
-
-    } catch (error) {
-      console.error('Llama API Error:', error.response?.status, error.response?.data || error.message);
-      
-      // If Llama fails, try Mistral as fallback
+    // Try OpenAI first (most reliable)
+    if (this.openaiKey) {
       try {
-        return await this.getMistralResponse(message);
-      } catch {
-        return this.getTherapeuticFallback(message);
+        return await this.getOpenAIResponse(message, chatHistory);
+      } catch (error) {
+        console.warn('OpenAI failed, trying Hugging Face:', error.message);
       }
     }
+
+    // Try Hugging Face as fallback
+    if (this.huggingfaceKey) {
+      try {
+        return await this.getHuggingFaceResponse(message, chatHistory);
+      } catch (error) {
+        console.warn('Hugging Face failed:', error.message);
+      }
+    }
+
+    // Ultimate fallback
+    return this.getTherapeuticFallback(message);
   }
 
-  // 🔥 Build therapy-style prompt
+  // OpenAI Implementation (Most Reliable)
+  async getOpenAIResponse(message, chatHistory) {
+    const systemPrompt = `You are a compassionate, licensed therapist. Your role is to provide empathetic, non-judgmental support.
+
+Guidelines:
+- Listen actively and validate feelings
+- Ask open-ended questions to encourage reflection
+- Use therapeutic techniques like CBT and mindfulness
+- Never give medical advice or diagnose
+- Create a safe, supportive space
+- Keep responses warm, concise (100-150 words)
+
+Client: ${this.userContext.name || 'Client'}`;
+
+    const recentHistory = chatHistory.slice(-5).map(msg => ({
+      role: msg.type === 'user' ? 'user' : 'assistant',
+      content: msg.text
+    }));
+
+    const response = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...recentHistory,
+          { role: 'user', content: message }
+        ],
+        max_tokens: 200,
+        temperature: 0.7,
+        presence_penalty: 0.3,
+        frequency_penalty: 0.5
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${this.openaiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      }
+    );
+
+    const aiResponse = response.data.choices[0].message.content;
+    
+    return {
+      text: aiResponse,
+      sentiment: this.analyzeSentiment(message),
+      needsHelp: false,
+      isCrisis: false
+    };
+  }
+
+  // Hugging Face Implementation (Free Fallback)
+  async getHuggingFaceResponse(message, chatHistory) {
+    const prompt = this.buildTherapyPrompt(message, chatHistory);
+
+    // Try multiple models
+    for (const model of this.models) {
+      try {
+        const response = await axios.post(
+          model,
+          {
+            inputs: prompt,
+            parameters: {
+              max_new_tokens: 150,
+              temperature: 0.7,
+              top_p: 0.9,
+              do_sample: true,
+              return_full_text: false
+            }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${this.huggingfaceKey}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: 10000
+          }
+        );
+
+        let aiResponse = response.data[0]?.generated_text || '';
+        aiResponse = aiResponse.replace(/Therapist:/g, '').trim();
+        
+        if (aiResponse && aiResponse.length > 5) {
+          return {
+            text: aiResponse,
+            sentiment: this.analyzeSentiment(message),
+            needsHelp: false,
+            isCrisis: false
+          };
+        }
+      } catch (error) {
+        console.warn(`Model ${model} failed:`, error.message);
+        continue;
+      }
+    }
+    
+    throw new Error('All Hugging Face models failed');
+  }
+
   buildTherapyPrompt(message, chatHistory) {
     const recentHistory = chatHistory.slice(-5).map(msg => 
       `${msg.type === 'user' ? 'Client' : 'Therapist'}: ${msg.text}`
     ).join('\n');
 
-    return `You are a compassionate, licensed therapist. Your role is to provide empathetic, non-judgmental support.
-
-Your approach:
-- Listen actively and validate feelings
-- Ask open-ended questions to encourage reflection
-- Use therapeutic techniques like CBT, ACT, and mindfulness
-- Never give medical advice or diagnose
-- Create a safe, supportive space
+    return `You are a compassionate therapist. Provide empathetic, non-judgmental support.
 
 Client context:
 - Name: ${this.userContext.name || 'Client'}
@@ -102,50 +167,63 @@ Client's message: "${message}"
 
 ${recentHistory ? `\nRecent conversation:\n${recentHistory}\n` : ''}
 
-Therapist's response (warm, empathetic, therapeutic):`;
+Therapist's response (warm, empathetic):`;
   }
 
-  // 🔥 Mistral as fallback (also free)
-  async getMistralResponse(message) {
-    const response = await axios.post(
-      'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3',
-      {
-        inputs: `[INST] You are a compassionate therapist. Respond with warmth and empathy to this client: ${message} [/INST]`,
-        parameters: {
-          max_new_tokens: 200,
-          temperature: 0.7,
-          top_p: 0.9
-        }
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+  getTherapeuticFallback(message) {
+    // Check for specific emotions for more tailored responses
+    const lowerMsg = message.toLowerCase();
+    
+    if (lowerMsg.includes('anxious') || lowerMsg.includes('anxiety')) {
+      return {
+        text: "I hear how much anxiety is weighing on you right now. 💙 That feeling of unease can be so overwhelming. Let's take a moment together. Can you describe where you feel the anxiety in your body right now?",
+        sentiment: 'anxiety',
+        needsHelp: false,
+        isCrisis: false
+      };
+    }
+    
+    if (lowerMsg.includes('lonely') || lowerMsg.includes('alone')) {
+      return {
+        text: "I hear the loneliness in your words, and I want you to know I'm here with you right now. 💙 Feeling isolated can be so heavy. What does loneliness feel like for you in this moment?",
+        sentiment: 'loneliness',
+        needsHelp: false,
+        isCrisis: false
+      };
+    }
+    
+    if (lowerMsg.includes('sad') || lowerMsg.includes('depressed')) {
+      return {
+        text: "I can feel the heaviness in what you're sharing. 💙 Depression has a way of making everything feel impossible. Please know that you're not alone, and these feelings don't define who you are.",
+        sentiment: 'depression',
+        needsHelp: false,
+        isCrisis: false
+      };
+    }
 
-    let aiResponse = response.data[0]?.generated_text || '';
-    aiResponse = aiResponse.replace(/\[INST\].*\[\/INST\]/, '').trim();
+    if (lowerMsg.match(/^(hi|hello|hey|good morning|good afternoon|good evening)/)) {
+      return {
+        text: `Hello ${this.userContext.name || 'there'}! 👋 I'm here as your supportive listener. How are you feeling today? What's on your mind?`,
+        sentiment: 'positive',
+        needsHelp: false,
+        isCrisis: false
+      };
+    }
+
+    const responses = [
+      "I hear you, and I want you to know that your feelings are completely valid. Can you tell me more about what's been on your mind lately?",
+      "Thank you for sharing this with me. It takes courage to open up. How long have you been feeling this way?",
+      "I'm here with you. What would feel most supportive for you right now?",
+      "I appreciate your honesty. Let's explore this together - what brought these feelings up for you?",
+      "That sounds really difficult. I'm sitting with you in this moment. Your feelings matter."
+    ];
     
     return {
-      text: aiResponse || this.getTherapeuticFallback(message),
-      sentiment: this.analyzeSentiment(message),
+      text: responses[Math.floor(Math.random() * responses.length)],
+      sentiment: 'neutral',
       needsHelp: false,
       isCrisis: false
     };
-  }
-
-  // 🔥 Therapeutic fallback (only if ALL APIs fail)
-  getTherapeuticFallback(message) {
-    const responses = [
-      "I hear you, and I want you to know that your feelings are completely valid. Can you tell me more about what's been on your mind lately?",
-      "That sounds really difficult. I'm here with you. What would feel most supportive for you right now?",
-      "Thank you for sharing this with me. It takes courage to open up. How long have you been feeling this way?",
-      "I'm sitting with you in this moment. Your feelings matter. What do you think you need right now?",
-      "I appreciate your honesty. Let's explore this together - what brought these feelings up for you?"
-    ];
-    return responses[Math.floor(Math.random() * responses.length)];
   }
 
   analyzeSentiment(text) {
@@ -155,8 +233,7 @@ Therapist's response (warm, empathetic, therapeutic):`;
       depression: ['sad', 'depressed', 'hopeless', 'empty', 'numb', 'tired', 'exhausted', 'worthless'],
       loneliness: ['lonely', 'alone', 'isolated', 'disconnected', 'unseen', 'unheard'],
       anger: ['angry', 'frustrated', 'mad', 'irritated', 'furious', 'rage', 'resentful'],
-      grief: ['grief', 'loss', 'miss', 'passed away', 'died', 'mourning', 'heartbroken'],
-      shame: ['ashamed', 'embarrassed', 'humiliated', 'worthless', 'failure', 'stupid', 'should have']
+      positive: ['good', 'great', 'happy', 'joy', 'excited', 'grateful', 'wonderful', 'amazing']
     };
     
     let detected = 'neutral';
