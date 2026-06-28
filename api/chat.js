@@ -24,7 +24,7 @@ Guidelines:
 - Listen actively, validate feelings, ask gentle open-ended follow-up questions.
 - Use light therapeutic technique (CBT-style reframing, grounding, mindfulness) where helpful.
 - Never diagnose or give medical advice.
-- Keep responses warm and concise (roughly 80-150 words) unless the user asks for more detail.
+- Keep responses warm and complete — aim for 100-200 words, but always finish your thought rather than cutting off.
 - If the user expresses intent to self-harm or suicidal ideation, gently and clearly point them to crisis resources (988 Suicide & Crisis Lifeline, Crisis Text Line: text HOME to 741741, or 911 for emergencies) in addition to responding with care.
 User's name: ${userContext.name || 'there'}.`;
 
@@ -48,7 +48,7 @@ User's name: ${userContext.name || 'there'}.`;
           systemInstruction: { parts: [{ text: systemInstruction }] },
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 350
+            maxOutputTokens: 600
           }
         })
       }
