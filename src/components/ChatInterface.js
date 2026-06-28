@@ -1,37 +1,122 @@
 import React, { useState, useEffect, useRef } from 'react';
 import mentalHealthAI from '../services/aiService';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import {
+  doc,
+  updateDoc,
+  arrayUnion,
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  onSnapshot,
+  serverTimestamp
+} from 'firebase/firestore';
 import { db } from '../services/firebase';
+
+// Voice Recognition Hook (same pattern used elsewhere in the app)
+const useVoiceRecognition = () => {
+  const [isListening, setIsListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const recognitionRef = useRef(null);
+
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'en-US';
+
+      recognitionRef.current.onresult = (event) => {
+        const current = event.resultIndex;
+        const text = event.results[current][0].transcript;
+        setTranscript(text);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+      };
+    }
+  }, []);
+
+  const startListening = () => {
+    if (recognitionRef.current && !isListening) {
+      setTranscript('');
+      setIsListening(true);
+      recognitionRef.current.start();
+    }
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current && isListening) {
+      setIsListening(false);
+      recognitionRef.current.stop();
+    }
+  };
+
+  return {
+    isListening,
+    transcript,
+    startListening,
+    stopListening,
+    hasRecognitionSupport: !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+  };
+};
 
 const ChatInterface = ({ user, userData }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [conversations, setConversations] = useState([]);
-  const [currentChat, setCurrentChat] = useState(null);
+  const [currentChatId, setCurrentChatId] = useState(null);
   const messagesEndRef = useRef(null);
 
-  // Load conversations from localStorage
+  const {
+    isListening,
+    transcript,
+    startListening,
+    stopListening,
+    hasRecognitionSupport
+  } = useVoiceRecognition();
+
+  // Fill the input box as speech is recognized
   useEffect(() => {
-    const saved = localStorage.getItem('chatHistory');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      setConversations(parsed);
-      if (parsed.length > 0) {
-        setCurrentChat(parsed[0]);
-        setMessages(parsed[0].messages || []);
+    if (transcript) {
+      setInput(transcript);
+    }
+  }, [transcript]);
+
+  // Subscribe to this user's conversations in Firestore, newest first.
+  // Path: users/{uid}/conversations/{conversationId}
+  useEffect(() => {
+    if (!user) return;
+
+    const conversationsRef = collection(db, 'users', user.uid, 'conversations');
+    const q = query(conversationsRef, orderBy('updatedAt', 'desc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const loaded = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setConversations(loaded);
+
+      // On first load, open the most recent conversation if one exists
+      if (!currentChatId && loaded.length > 0) {
+        setCurrentChatId(loaded[0].id);
+        setMessages(loaded[0].messages || []);
       }
-    }
-  }, []);
+    }, (error) => {
+      console.error('Error loading conversations:', error);
+    });
 
-  // Save conversations to localStorage
-  useEffect(() => {
-    if (conversations.length > 0) {
-      localStorage.setItem('chatHistory', JSON.stringify(conversations));
-    }
-  }, [conversations]);
+    return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
-  // Scroll to bottom
+  // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -42,6 +127,33 @@ const ChatInterface = ({ user, userData }) => {
       mentalHealthAI.setUserContext(userData);
     }
   }, [userData]);
+
+  const persistConversation = async (chatId, updatedMessages, title) => {
+    if (!user) return;
+
+    try {
+      if (chatId) {
+        await updateDoc(doc(db, 'users', user.uid, 'conversations', chatId), {
+          messages: updatedMessages,
+          title,
+          updatedAt: serverTimestamp()
+        });
+        return chatId;
+      } else {
+        const newDoc = await addDoc(collection(db, 'users', user.uid, 'conversations'), {
+          messages: updatedMessages,
+          title,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        setCurrentChatId(newDoc.id);
+        return newDoc.id;
+      }
+    } catch (error) {
+      console.error('Error saving conversation to Firestore:', error);
+      return chatId;
+    }
+  };
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -55,12 +167,13 @@ const ChatInterface = ({ user, userData }) => {
 
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
+    const sentText = input;
     setInput('');
     setLoading(true);
 
     try {
-      const aiResponse = await mentalHealthAI.getResponse(input, updatedMessages);
-      
+      const aiResponse = await mentalHealthAI.getResponse(sentText, updatedMessages);
+
       const botMessage = {
         id: Date.now() + 1,
         text: aiResponse.text,
@@ -71,9 +184,9 @@ const ChatInterface = ({ user, userData }) => {
 
       const finalMessages = [...updatedMessages, botMessage];
       setMessages(finalMessages);
-      mentalHealthAI.storeConversation(input, aiResponse.text);
+      mentalHealthAI.storeConversation(sentText, aiResponse.text);
 
-      // Save to Firebase
+      // Save activity points to the user's profile doc
       if (user) {
         await updateDoc(doc(db, 'users', user.uid), {
           points: (userData?.points || 0) + 5,
@@ -81,44 +194,29 @@ const ChatInterface = ({ user, userData }) => {
             type: 'mental_wellness',
             points: 5,
             timestamp: new Date().toISOString(),
-            message: input.substring(0, 200),
+            message: sentText.substring(0, 200),
             aiResponse: aiResponse.text.substring(0, 200),
             sentiment: aiResponse.sentiment || 'neutral'
           })
         });
       }
 
-      // Update conversation history
+      // Save/update this conversation in Firestore
       const chatTitle = finalMessages[0]?.text?.substring(0, 40) || 'New Chat';
-      if (currentChat) {
-        const updatedChats = conversations.map(chat => 
-          chat.id === currentChat.id 
-            ? { ...chat, messages: finalMessages, title: chatTitle, timestamp: new Date().toISOString() }
-            : chat
-        );
-        setConversations(updatedChats);
-        setCurrentChat({ ...currentChat, messages: finalMessages, title: chatTitle });
-      } else {
-        const newChat = {
-          id: Date.now(),
-          title: chatTitle,
-          messages: finalMessages,
-          timestamp: new Date().toISOString(),
-          userName: userData?.fullName || 'Guest'
-        };
-        setConversations([newChat, ...conversations]);
-        setCurrentChat(newChat);
-      }
-
+      const savedId = await persistConversation(currentChatId, finalMessages, chatTitle);
+      if (!currentChatId) setCurrentChatId(savedId);
     } catch (error) {
       console.error('Send message error:', error);
-      setMessages(prev => [...prev, {
-        id: Date.now(),
-        text: "I'm having trouble connecting right now. Please try again in a moment.",
-        type: 'bot',
-        timestamp: new Date().toISOString(),
-        isError: true
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          text: "I'm having trouble connecting right now. Please try again in a moment.",
+          type: 'bot',
+          timestamp: new Date().toISOString(),
+          isError: true
+        }
+      ]);
     }
 
     setLoading(false);
@@ -126,12 +224,12 @@ const ChatInterface = ({ user, userData }) => {
 
   const handleNewChat = () => {
     setMessages([]);
-    setCurrentChat(null);
+    setCurrentChatId(null);
   };
 
   const handleSelectChat = (chat) => {
     if (chat) {
-      setCurrentChat(chat);
+      setCurrentChatId(chat.id);
       setMessages(chat.messages || []);
     } else {
       handleNewChat();
@@ -145,9 +243,18 @@ const ChatInterface = ({ user, userData }) => {
     }
   };
 
-  // Group conversations by date
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
+  // Group conversations by date for the sidebar
   const groupedConversations = conversations.reduce((groups, chat) => {
-    const date = new Date(chat.timestamp).toLocaleDateString();
+    const dateValue = chat.updatedAt?.toDate ? chat.updatedAt.toDate() : new Date();
+    const date = dateValue.toLocaleDateString();
     if (!groups[date]) groups[date] = [];
     groups[date].push(chat);
     return groups;
@@ -165,12 +272,12 @@ const ChatInterface = ({ user, userData }) => {
           {Object.entries(groupedConversations).map(([date, chats]) => (
             <div key={date}>
               <div style={styles.dateHeader}>{date}</div>
-              {chats.map(chat => (
+              {chats.map((chat) => (
                 <div
                   key={chat.id}
                   style={{
                     ...styles.chatItem,
-                    ...(currentChat?.id === chat.id && styles.activeChat)
+                    ...(currentChatId === chat.id && styles.activeChat)
                   }}
                   onClick={() => handleSelectChat(chat)}
                 >
@@ -181,7 +288,9 @@ const ChatInterface = ({ user, userData }) => {
                         {chat.title || chat.messages?.[0]?.text?.substring(0, 30) || 'New Chat'}
                       </div>
                       <div style={styles.chatTime}>
-                        {new Date(chat.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {chat.updatedAt?.toDate
+                          ? chat.updatedAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          : ''}
                       </div>
                     </div>
                   </div>
@@ -189,9 +298,12 @@ const ChatInterface = ({ user, userData }) => {
               ))}
             </div>
           ))}
+          {conversations.length === 0 && (
+            <div style={styles.noChatsYet}>No past conversations yet</div>
+          )}
         </div>
         <div style={styles.sidebarFooter}>
-          <div style={styles.userInfo}>
+          <div style={styles.userInfoRow}>
             <span style={styles.userAvatar}>👤</span>
             <span style={styles.userName}>{userData?.fullName || 'Guest'}</span>
           </div>
@@ -251,12 +363,25 @@ const ChatInterface = ({ user, userData }) => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Type your message here..."
+              placeholder="Type your message, or use the mic to speak..."
               style={styles.chatInput}
               rows="1"
               disabled={loading}
             />
-            <button 
+            {hasRecognitionSupport && (
+              <button
+                onClick={toggleListening}
+                title={isListening ? 'Stop listening' : 'Speak your message'}
+                style={{
+                  ...styles.micBtn,
+                  ...(isListening ? styles.micBtnActive : {})
+                }}
+                disabled={loading}
+              >
+                {isListening ? '🛑' : '🎤'}
+              </button>
+            )}
+            <button
               onClick={handleSend}
               style={{
                 ...styles.sendBtn,
@@ -267,6 +392,11 @@ const ChatInterface = ({ user, userData }) => {
               {loading ? '⌛' : '➤'}
             </button>
           </div>
+          {isListening && (
+            <div style={styles.listeningIndicator}>
+              <span style={styles.pulsingDot}></span> Listening... speak now
+            </div>
+          )}
           <div style={styles.disclaimer}>
             This AI provides emotional support but is not a substitute for professional mental healthcare.
           </div>
@@ -320,7 +450,9 @@ const styles = {
   chatInfo: { flex: 1, overflow: 'hidden' },
   chatName: { fontSize: '14px', fontWeight: '500', color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   chatTime: { fontSize: '12px', color: '#999' },
+  noChatsYet: { padding: '16px 12px', color: '#999', fontSize: '13px' },
   sidebarFooter: { padding: '12px 16px', borderTop: '1px solid #e5e5e5' },
+  userInfoRow: { display: 'flex', alignItems: 'center', gap: '8px' },
   userAvatar: { fontSize: '24px' },
   userName: { fontSize: '14px', fontWeight: '500', color: '#333' },
   chatArea: { flex: 1, display: 'flex', flexDirection: 'column', background: '#ffffff' },
@@ -344,8 +476,12 @@ const styles = {
   inputArea: { padding: '16px 24px', borderTop: '1px solid #e5e5e5', background: 'white' },
   inputContainer: { display: 'flex', gap: '12px', alignItems: 'flex-end', maxWidth: '900px', margin: '0 auto', width: '100%' },
   chatInput: { flex: 1, padding: '12px 16px', border: '2px solid #e5e5e5', borderRadius: '12px', fontSize: '15px', resize: 'none', minHeight: '50px', maxHeight: '150px', fontFamily: 'inherit', outline: 'none', transition: 'border-color 0.2s' },
+  micBtn: { background: '#6c757d', color: 'white', border: 'none', width: '50px', height: '50px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', flexShrink: 0 },
+  micBtnActive: { background: '#dc3545' },
   sendBtn: { background: '#667eea', color: 'white', border: 'none', width: '50px', height: '50px', borderRadius: '12px', cursor: 'pointer', fontSize: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', flexShrink: 0 },
   sendBtnDisabled: { opacity: 0.5, cursor: 'not-allowed' },
+  listeningIndicator: { display: 'flex', alignItems: 'center', gap: '8px', color: '#dc3545', fontSize: '13px', fontWeight: '600', marginTop: '8px', maxWidth: '900px', margin: '8px auto 0' },
+  pulsingDot: { width: '8px', height: '8px', borderRadius: '50%', background: '#dc3545', display: 'inline-block' },
   disclaimer: { fontSize: '12px', color: '#999', textAlign: 'center', marginTop: '10px', maxWidth: '900px', margin: '10px auto 0' }
 };
 
