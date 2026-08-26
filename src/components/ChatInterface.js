@@ -12,6 +12,7 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { speakText } from '../utils/speechUtils';
 
 // Voice Recognition Hook (same pattern used elsewhere in the app)
 const useVoiceRecognition = () => {
@@ -74,6 +75,8 @@ const ChatInterface = ({ user, userData }) => {
   const [loading, setLoading] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [speakingId, setSpeakingId] = useState(null);
   const messagesEndRef = useRef(null);
 
   const {
@@ -83,6 +86,40 @@ const ChatInterface = ({ user, userData }) => {
     stopListening,
     hasRecognitionSupport
   } = useVoiceRecognition();
+
+  const hasSpeechSupport = 'speechSynthesis' in window;
+
+  // Stop the assistant speaking (used by the toggle, the per-message
+  // stop button, and on unmount so speech doesn't keep playing after
+  // the user navigates away)
+  const stopSpeaking = () => {
+    if (hasSpeechSupport) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeakingId(null);
+  };
+
+  useEffect(() => {
+    return () => stopSpeaking();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Read a bot message aloud. Strips markdown bold and turns
+  // newlines into pauses so it doesn't read out raw symbols.
+  const speakMessage = (id, text) => {
+    if (!hasSpeechSupport) return;
+    window.speechSynthesis.cancel();
+    const speakable = text.replace(/\*\*/g, '').replace(/\n/g, '. ');
+    setSpeakingId(id);
+    speakText(speakable, () => setSpeakingId((current) => (current === id ? null : current)));
+  };
+
+  const toggleVoice = () => {
+    setVoiceEnabled((prev) => {
+      if (prev) stopSpeaking();
+      return !prev;
+    });
+  };
 
   // Fill the input box as speech is recognized
   useEffect(() => {
@@ -185,6 +222,10 @@ const ChatInterface = ({ user, userData }) => {
       const finalMessages = [...updatedMessages, botMessage];
       setMessages(finalMessages);
       mentalHealthAI.storeConversation(sentText, aiResponse.text);
+
+      if (voiceEnabled) {
+        speakMessage(botMessage.id, botMessage.text);
+      }
 
       // Save activity points to the user's profile doc
       if (user) {
@@ -315,6 +356,18 @@ const ChatInterface = ({ user, userData }) => {
         <div style={styles.chatHeader}>
           <span style={styles.chatHeaderTitle}>Mental Wellness Assistant</span>
           <span style={styles.chatHeaderStatus}>● Online</span>
+          {hasSpeechSupport && (
+            <button
+              onClick={toggleVoice}
+              title={voiceEnabled ? 'Turn off spoken replies' : 'Turn on spoken replies'}
+              style={{
+                ...styles.voiceToggleBtn,
+                ...(voiceEnabled ? styles.voiceToggleBtnActive : {})
+              }}
+            >
+              {voiceEnabled ? '🔊 Voice On' : '🔇 Voice Off'}
+            </button>
+          )}
         </div>
 
         <div style={styles.messagesContainer}>
@@ -341,8 +394,21 @@ const ChatInterface = ({ user, userData }) => {
                   ...(msg.type === 'user' ? styles.userBubble : styles.botBubble)
                 }}>
                   <div style={styles.messageText}>{msg.text}</div>
-                  <div style={styles.messageTime}>
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <div style={styles.messageFooter}>
+                    <div style={styles.messageTime}>
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                    {msg.type === 'bot' && hasSpeechSupport && (
+                      <button
+                        onClick={() =>
+                          speakingId === msg.id ? stopSpeaking() : speakMessage(msg.id, msg.text)
+                        }
+                        title={speakingId === msg.id ? 'Stop reading' : 'Read this reply aloud'}
+                        style={styles.speakBtn}
+                      >
+                        {speakingId === msg.id ? '⏹️' : '🔊'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -459,6 +525,21 @@ const styles = {
   chatHeader: { padding: '16px 24px', borderBottom: '1px solid #e5e5e5', background: 'white', display: 'flex', alignItems: 'center', gap: '12px' },
   chatHeaderTitle: { fontSize: '18px', fontWeight: '600', color: '#333' },
   chatHeaderStatus: { fontSize: '13px', color: '#10b981', fontWeight: '500' },
+  voiceToggleBtn: {
+    marginLeft: 'auto',
+    background: '#f0f0f0',
+    color: '#555',
+    border: 'none',
+    padding: '6px 12px',
+    borderRadius: '20px',
+    cursor: 'pointer',
+    fontSize: '13px',
+    fontWeight: '500',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px'
+  },
+  voiceToggleBtnActive: { background: '#e8ecff', color: '#667eea' },
   messagesContainer: { flex: 1, overflowY: 'auto', padding: '20px 0', background: '#f9fafb' },
   messageContainer: { display: 'flex', gap: '12px', padding: '16px 20px', maxWidth: '900px', margin: '0 auto', width: '100%' },
   userContainer: { flexDirection: 'row-reverse' },
@@ -468,7 +549,17 @@ const styles = {
   userBubble: { background: '#667eea', color: 'white', borderBottomRightRadius: '4px' },
   botBubble: { background: 'white', color: '#333', borderBottomLeftRadius: '4px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' },
   messageText: { fontSize: '15px', lineHeight: '1.6' },
-  messageTime: { fontSize: '11px', opacity: 0.6, marginTop: '4px', textAlign: 'right' },
+  messageFooter: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' },
+  messageTime: { fontSize: '11px', opacity: 0.6, textAlign: 'right' },
+  speakBtn: {
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: '13px',
+    padding: '2px 4px',
+    lineHeight: 1,
+    opacity: 0.7
+  },
   welcome: { textAlign: 'center', padding: '60px 20px', maxWidth: '600px', margin: '0 auto' },
   suggestions: { display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '20px', justifyContent: 'center' },
   typing: { display: 'flex', alignItems: 'center', gap: '12px', padding: '16px 20px', maxWidth: '900px', margin: '0 auto', width: '100%' },
